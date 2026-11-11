@@ -22,9 +22,6 @@ final class PairingController: ObservableObject {
     @Published var pairingStatus: String = "idle"
     @Published var pairingPIN: String? = nil
 
-    /// Path to the pairing file that was actively found or created.
-    static var customPairingFilePath: String? = nil
-
     /// Persisted altIRK keeps the host identity stable across pairings so a
     /// device that has already paired recognises this host.
     nonisolated private static let altIRKKey = "aircardPairingHostAltIRK"
@@ -39,12 +36,14 @@ final class PairingController: ObservableObject {
 
     enum PairingError: LocalizedError {
         case busy
+        case unsupportedSelfPairing
         case localNetworkDenied
         case zeroBytes
         case failed(String)
 
         var errorDescription: String? {
             switch self {
+            case .unsupportedSelfPairing: return String(localized: "On-device pairing requires iOS 27. Import a pairing file for this iPhone instead.")
             case .busy: return "Pairing is already in progress."
             case .localNetworkDenied: return "Local Network permission is off. Enable it in Settings › Placard › Local Network."
             case .zeroBytes: return "Pairing produced an empty file. Approve the pairing request, then try again."
@@ -53,79 +52,46 @@ final class PairingController: ObservableObject {
         }
     }
 
-    /// Ensures the given pairing file is mirrored to canonical aircard_pairing.plist and airlift_pairing.plist.
-    @discardableResult
-    static func syncCanonicalPairingFile(from sourcePath: String) -> String {
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let aircardURL = dir.appendingPathComponent("aircard_pairing.plist")
-        let airliftURL = dir.appendingPathComponent("airlift_pairing.plist")
-
-        if let data = try? Data(contentsOf: URL(fileURLWithPath: sourcePath)), !data.isEmpty {
-            if sourcePath != aircardURL.path {
-                try? data.write(to: aircardURL, options: .atomic)
-            }
-            if sourcePath != airliftURL.path {
-                try? data.write(to: airliftURL, options: .atomic)
-            }
-            customPairingFilePath = aircardURL.path
-            return aircardURL.path
-        }
-        return sourcePath
-    }
-
-    /// Path where the pairing file is written or read from.
-    /// Checks for canonical aircard_pairing.plist, custom path, or any plist in Documents,
-    /// automatically adopting and standardizing it.
+    /// Resolve only known names. Never adopt arbitrary Documents files or write on lookup.
     static func pairingFilePath() -> String {
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let aircardPath = dir.appendingPathComponent("aircard_pairing.plist").path
-        if FileManager.default.fileExists(atPath: aircardPath) {
-            let size = (try? FileManager.default.attributesOfItem(atPath: aircardPath)[.size] as? Int) ?? 0
-            if size > 0 { return aircardPath }
+        for name in ["aircard_pairing.plist", "airlift_pairing.plist"] {
+            let url = dir.appendingPathComponent(name)
+            if (try? PairingRecord.read(from: url)) != nil { return url.path }
         }
+        return dir.appendingPathComponent("aircard_pairing.plist").path
+    }
 
-        let airliftPath = dir.appendingPathComponent("airlift_pairing.plist").path
-        if FileManager.default.fileExists(atPath: airliftPath) {
-            let size = (try? FileManager.default.attributesOfItem(atPath: airliftPath)[.size] as? Int) ?? 0
-            if size > 0 {
-                _ = syncCanonicalPairingFile(from: airliftPath)
-                return aircardPath
-            }
-        }
+    static var hasValidPairingFile: Bool {
+        (try? PairingRecord.read(from: URL(fileURLWithPath: pairingFilePath()))) != nil
+    }
 
-        if let custom = customPairingFilePath, FileManager.default.fileExists(atPath: custom) {
-            let size = (try? FileManager.default.attributesOfItem(atPath: custom)[.size] as? Int) ?? 0
-            if size > 0 {
-                _ = syncCanonicalPairingFile(from: custom)
-                return aircardPath
-            }
-        }
+    /// A single atomic replacement in the app sandbox; original input is untouched.
+    @discardableResult
+    static func syncCanonicalPairingFile(from sourcePath: String) throws -> String {
+        let data = try PairingRecord.read(from: URL(fileURLWithPath: sourcePath))
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let destination = dir.appendingPathComponent("aircard_pairing.plist")
+        try data.write(to: destination, options: [.atomic, .completeFileProtection])
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
+        var protectedURL = destination
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try protectedURL.setResourceValues(values)
+        return destination.path
+    }
 
-        // Scan Documents directory for any .plist file
-        if let files = try? FileManager.default.contentsOfDirectory(atPath: dir.path) {
-            let plists = files.filter {
-                $0.hasSuffix(".plist") || $0.hasSuffix(".mobiledevicepairing") || $0.hasSuffix(".mobilepair")
-            }
-            for candidate in plists {
-                let candidatePath = dir.appendingPathComponent(candidate).path
-                let size = (try? FileManager.default.attributesOfItem(atPath: candidatePath)[.size] as? Int) ?? 0
-                if size > 0 {
-                    _ = syncCanonicalPairingFile(from: candidatePath)
-                    return aircardPath
-                }
-            }
-        }
-
-        return aircardPath
+    static func importPairingFile(from url: URL) throws {
+        guard !shared.running else { throw PairingError.busy }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        _ = try syncCanonicalPairingFile(from: url.path)
     }
 
     /// Start the host and resolve with the pairing-file path, or throw.
     func startAndWait() async throws -> String {
-        // If already running, cancel previous to allow clean restart
-        if running {
-            softCancel()
-            try? await Task.sleep(nanoseconds: 100_000_000)
-        }
+        guard SystemCompatibility.supportsOnDevicePairing else { throw PairingError.unsupportedSelfPairing }
+        guard !running else { throw PairingError.busy }
         return try await withCheckedThrowingContinuation { cont in
             pairContinuation = cont
             start()
@@ -148,6 +114,11 @@ final class PairingController: ObservableObject {
     }
 
     func start() {
+        guard SystemCompatibility.supportsOnDevicePairing else {
+            resolve(.failure(PairingError.unsupportedSelfPairing))
+            return
+        }
+        guard !running else { return }
         stopAdvertising()
         keepAlive.stopAll()
         running = true
@@ -230,15 +201,14 @@ final class PairingController: ObservableObject {
         pairingPIN = nil
 
         switch outcome {
-        case let .success(name, path):
-            let canonical = Self.syncCanonicalPairingFile(from: path)
-            let size = (try? FileManager.default.attributesOfItem(atPath: canonical)[.size] as? Int) ?? 0
-            if size == 0 {
-                pairingStatus = "Failed: empty pairing file"
-                resolve(.failure(PairingError.zeroBytes))
-            } else {
-                pairingStatus = "Paired: \(name) (\(size)B)"
+        case let .success(_, path):
+            do {
+                let canonical = try Self.syncCanonicalPairingFile(from: path)
+                pairingStatus = "Pairing file saved; connection not yet checked"
                 resolve(.success(canonical))
+            } catch {
+                pairingStatus = "Invalid pairing output"
+                resolve(.failure(error))
             }
         case let .failure(message):
             pairingStatus = "Failed: \(message)"

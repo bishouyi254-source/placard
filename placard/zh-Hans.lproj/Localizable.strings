@@ -123,3 +123,17 @@
 "Pair again" = "重新配对";
 "Checking connection…" = "检查连接…";
 "Check and enter" = "检查并进入";
+
+/* Compatibility diagnostics and explicit pairing import. */
+"On-device pairing requires iOS 27. Import a pairing file for this iPhone instead." = "手机端自配对需要 iOS 27。请改为导入这台 iPhone 的配对文件。";
+"Import pairing file…" = "导入配对文件…";
+"Pairing files contain private keys. Import only your own record. Importing does not verify device trust or wallpaper compatibility." = "配对文件包含私钥，请只导入你自己的记录。导入完成不代表设备信任或壁纸兼容性已验证。";
+"Invalid pairing file. Select a complete Lockdown or Remote Pairing plist for this iPhone (maximum 1 MB)." = "配对文件无效。请选择这台 iPhone 的完整 Lockdown 或 Remote Pairing plist 文件（最大 1 MB）。";
+"Library access via bad_query is unavailable on this system. Airlift library reading is not implemented; check Settings › Wallpaper. This does not determine whether an Airlift write succeeded." = "此系统不支持通过 bad_query 访问壁纸库。Airlift 壁纸库读取尚未实现，请到“设置 › 墙纸”检查。这不能用来判断 Airlift 写入是否成功。";
+"Write requests completed, but wallpaper registration could not be verified. This Airlift build has no wallpaper read-back API. No automatic respring or preference reset was performed. Check Settings › Wallpaper before retrying; do not repeatedly install the same package." = "写入请求已完成，但无法验证壁纸是否已被系统注册。当前 Airlift 没有壁纸回读接口。本次未自动刷新屏幕，也未重置系统偏好。请先到“设置 › 墙纸”检查，不要反复安装同一壁纸包。";
+"PosterBoard returned an unexpected container path. No write was attempted." = "PosterBoard 返回了非预期的容器路径，未尝试写入。";
+"No wallpapers selected to write." = "没有选择要写入的壁纸。";
+"Wallpaper extraction failed. No success can be reported." = "壁纸解压失败，不能报告安装成功。";
+"The package contains no installable descriptors." = "壁纸包中没有可安装的描述文件。";
+"This container package preserves existing wallpaper identifiers. Without read-back, Placard cannot safely check for overwrites. This package was not written." = "此容器包保留原有壁纸标识。由于无法回读，Placard 不能安全检查是否会覆盖已有壁纸，本次未写入此包。";
+"Share installation diagnostics" = "分享安装诊断记录";

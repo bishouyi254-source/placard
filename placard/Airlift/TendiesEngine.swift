@@ -33,12 +33,10 @@ public final class TendiesEngine {
 
         let fileName = sourceURL.lastPathComponent
         let baseName = (fileName as NSString).deletingPathExtension
-        let destinationURL = Self.tendiesStorageDirectory.appendingPathComponent(fileName)
+        let storedName = UUID().uuidString + ".tendies"
+        let destinationURL = Self.tendiesStorageDirectory.appendingPathComponent(storedName)
 
         if sourceURL.standardizedFileURL.path != destinationURL.standardizedFileURL.path {
-            if FileManager.default.fileExists(atPath: destinationURL.path) {
-                try? FileManager.default.removeItem(at: destinationURL)
-            }
             do {
                 try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
             } catch {
@@ -161,7 +159,7 @@ public final class TendiesEngine {
         return TendieItem(
             name: baseName,
             fileName: fileName,
-            relativePath: fileName,
+            relativePath: storedName,
             isContainer: isContainer,
             unsafeContainer: unsafeContainer,
             descriptorCount: descriptorCount,
@@ -250,8 +248,9 @@ public final class TendiesEngine {
         progress: @escaping (Double) -> Void
     ) async throws {
         guard !items.isEmpty else {
-            log("⚠️ No wallpapers selected to flash")
-            return
+            throw NSError(domain: "TendiesEngine", code: 10, userInfo: [
+                NSLocalizedDescriptionKey: String(localized: "No wallpapers selected to write.")
+            ])
         }
 
         var normalizedContainer = containerPath.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -291,12 +290,23 @@ public final class TendiesEngine {
                 }
             }
             guard extractRC == 0 else {
-                log("❌ Failed to extract '\(item.name)'")
-                continue
+                throw NSError(domain: "TendiesEngine", code: 11, userInfo: [
+                    NSLocalizedDescriptionKey: String(localized: "Wallpaper extraction failed. No success can be reported.")
+                ])
             }
 
             log("  🖼 Locating wallpaper descriptors…")
             let descriptors = findDescriptorsWithExtensions(in: tempStageDir, defaultExt: item.posterType.extensionBundleId)
+            guard !descriptors.isEmpty else {
+                throw NSError(domain: "TendiesEngine", code: 12, userInfo: [
+                    NSLocalizedDescriptionKey: String(localized: "The package contains no installable descriptors.")
+                ])
+            }
+            guard resetProtections || !descriptors.contains(where: { $0.preservesIdentifiers }) else {
+                throw NSError(domain: "TendiesEngine", code: 13, userInfo: [
+                    NSLocalizedDescriptionKey: String(localized: "This container package preserves existing wallpaper identifiers. Without read-back, Placard cannot safely check for overwrites. This package was not written.")
+                ])
+            }
             log("  ✨ Found \(descriptors.count) descriptor(s) to install")
 
             for (descIndex, descItem) in descriptors.enumerated() {
@@ -327,13 +337,18 @@ public final class TendiesEngine {
                     // On iOS 18+, Collections was migrated to com.apple.Posters.CollectionsPosterApp
                     if descItem.ext == "com.apple.WallpaperKit.CollectionsPoster" {
                         let modernParentDir = "\(normalizedContainer)/Library/Application Support/PRBPosterExtensionDataStore/\(sVer)/Extensions/com.apple.Posters.CollectionsPosterApp/descriptors"
-                        try? await injectDescriptorFolder(
-                            folderURL: descItem.url,
-                            targetParentDir: modernParentDir,
-                            destName: targetUUID,
-                            pairingPath: pairingPath,
-                            log: log
-                        )
+                        do {
+                            try await injectDescriptorFolder(
+                                folderURL: descItem.url,
+                                targetParentDir: modernParentDir,
+                                destName: targetUUID,
+                                pairingPath: pairingPath,
+                                log: log
+                            )
+                        } catch {
+                            log("Modern Collections descriptor write failed; stopping with a possibly partial write.")
+                            throw error
+                        }
                     }
                 }
             }
@@ -341,7 +356,13 @@ public final class TendiesEngine {
             progress(Double(itemIndex + 1) / (totalItems + 1))
         }
 
-        // Always force PosterBoard cache refresh and file protections reset
+        guard resetProtections else {
+            progress(1.0)
+            log("Descriptor write requests completed. Preference reset skipped; system registration remains unverified.")
+            return
+        }
+
+        // Legacy preference reset is opt-in, never used by the unverified Airlift adapter.
         log("\n🔄 Forcing PosterBoard cache refresh and file protections reset…")
         let stagePrefDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("tendie_pref_\(UUID().uuidString)")
@@ -380,7 +401,7 @@ public final class TendiesEngine {
 
         // Also write to mobile global preferences for system daemon lookup
         let mobilePrefDir = "/var/mobile/Library/Preferences"
-        try? await writeDirectoryTree(
+        try await writeDirectoryTree(
             sourceBaseDir: stagePrefDir,
             targetBaseDir: mobilePrefDir,
             pairingPath: pairingPath,
@@ -389,7 +410,7 @@ public final class TendiesEngine {
         log("✅ PosterBoard preferences staged for reload")
 
         progress(1.0)
-        log("\n🎉 All wallpapers injected successfully! Open Lock Screen settings or long-press lockscreen to choose your new wallpaper.")
+        log("Write requests completed. PosterBoard registration still requires verification.")
     }
 
     // MARK: - Tree Writer Helper
@@ -669,6 +690,6 @@ public final class TendiesEngine {
             }
         }
 
-        return results.isEmpty ? [(ext: defaultExt, url: rootURL, preservesIdentifiers: false)] : results
+        return results
     }
 }

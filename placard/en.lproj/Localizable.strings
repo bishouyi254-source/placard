@@ -123,3 +123,17 @@
 "Pair again" = "Pair again";
 "Checking connection…" = "Checking connection…";
 "Check and enter" = "Check and enter";
+
+/* Compatibility diagnostics and explicit pairing import. */
+"On-device pairing requires iOS 27. Import a pairing file for this iPhone instead." = "On-device pairing requires iOS 27. Import a pairing file for this iPhone instead.";
+"Import pairing file…" = "Import pairing file…";
+"Pairing files contain private keys. Import only your own record. Importing does not verify device trust or wallpaper compatibility." = "Pairing files contain private keys. Import only your own record. Importing does not verify device trust or wallpaper compatibility.";
+"Invalid pairing file. Select a complete Lockdown or Remote Pairing plist for this iPhone (maximum 1 MB)." = "Invalid pairing file. Select a complete Lockdown or Remote Pairing plist for this iPhone (maximum 1 MB).";
+"Library access via bad_query is unavailable on this system. Airlift library reading is not implemented; check Settings › Wallpaper. This does not determine whether an Airlift write succeeded." = "Library access via bad_query is unavailable on this system. Airlift library reading is not implemented; check Settings › Wallpaper. This does not determine whether an Airlift write succeeded.";
+"Write requests completed, but wallpaper registration could not be verified. This Airlift build has no wallpaper read-back API. No automatic respring or preference reset was performed. Check Settings › Wallpaper before retrying; do not repeatedly install the same package." = "Write requests completed, but wallpaper registration could not be verified. This Airlift build has no wallpaper read-back API. No automatic respring or preference reset was performed. Check Settings › Wallpaper before retrying; do not repeatedly install the same package.";
+"PosterBoard returned an unexpected container path. No write was attempted." = "PosterBoard returned an unexpected container path. No write was attempted.";
+"No wallpapers selected to write." = "No wallpapers selected to write.";
+"Wallpaper extraction failed. No success can be reported." = "Wallpaper extraction failed. No success can be reported.";
+"The package contains no installable descriptors." = "The package contains no installable descriptors.";
+"This container package preserves existing wallpaper identifiers. Without read-back, Placard cannot safely check for overwrites. This package was not written." = "This container package preserves existing wallpaper identifiers. Without read-back, Placard cannot safely check for overwrites. This package was not written.";
+"Share installation diagnostics" = "Share installation diagnostics";

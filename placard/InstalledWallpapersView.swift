@@ -94,6 +94,9 @@ struct InstalledWallpapersView: View {
                 Text(message)
             } actions: {
                 Button("Retry") { Task { await manager.load() } }
+                if FileManager.default.fileExists(atPath: AirliftWallpaperService.diagnosticURL.path) {
+                    ShareLink("Share installation diagnostics", item: AirliftWallpaperService.diagnosticURL)
+                }
             }
         case .deleting:
             ProgressView("Deleting…")

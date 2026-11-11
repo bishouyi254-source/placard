@@ -104,11 +104,13 @@ struct InstalledWallpaperLibrary: Sendable {
     nonisolated static let live = InstalledWallpaperLibrary(
         load: {
             try await Task.detached(priority: .userInitiated) {
-                try BadQuery.installedWallpapers()
+                guard BadQuery.isAvailable else { throw BadQueryError.unsupportedSystem }
+                return try BadQuery.installedWallpapers()
             }.value
         },
         delete: { wallpaper in
             try await Task.detached(priority: .userInitiated) {
+                guard BadQuery.isAvailable else { throw BadQueryError.unsupportedSystem }
                 try BadQuery.deleteInstalledWallpaper(wallpaper)
             }.value
         }

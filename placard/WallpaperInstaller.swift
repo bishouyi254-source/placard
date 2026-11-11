@@ -109,7 +109,7 @@ final class InstallCoordinator {
         let nsError = error as NSError
         let diagnostic = "Installation failed: \(String(reflecting: error)); domain=\(nsError.domain); code=\(nsError.code); userInfo=\(nsError.userInfo)"
         installerLogger.error(
-            "\(diagnostic, privacy: .public)"
+            "\(diagnostic, privacy: .private)"
         )
     }
 }

@@ -1,6 +1,7 @@
 import SwiftUI
 import Network
 import Combine
+import UniformTypeIdentifiers
 
 @MainActor
 final class AirliftWiFiMonitor: ObservableObject {
@@ -34,13 +35,30 @@ final class AirliftWiFiMonitor: ObservableObject {
 struct AirliftEntryView: View {
     @ObservedObject private var pairing = PairingController.shared
     @StateObject private var wifiMonitor = AirliftWiFiMonitor()
-    @State private var paired = FileManager.default.fileExists(atPath: PairingController.pairingFilePath())
+    @State private var paired = PairingController.hasValidPairingFile
+    @State private var importingPairing = false
     @State private var connected = false
     @State private var checking = false
     @State private var pairingError: String?
     @State private var connectionError: String?
 
     var body: some View {
+        content
+            .fileImporter(isPresented: $importingPairing, allowedContentTypes: [.data], allowsMultipleSelection: false) { result in
+                do {
+                    guard let url = try result.get().first else { return }
+                    try PairingController.importPairingFile(from: url)
+                    pairingError = nil
+                    connectionError = nil
+                    connected = false
+                    paired = true
+                } catch {
+                    pairingError = error.localizedDescription
+                }
+            }
+    }
+
+    @ViewBuilder private var content: some View {
         switch wifiMonitor.status {
         case .checking:
             AirliftWiFiCheckingView()
@@ -62,14 +80,15 @@ struct AirliftEntryView: View {
             } else {
                 AirliftPairingView(
                     running: pairing.running, pin: pairing.pairingPIN,
-                    error: pairingError, onStart: startPairing
+                    error: pairingError, onStart: startPairing,
+                    onImport: { importingPairing = true }
                 )
             }
         }
     }
 
     private func startPairing() {
-        guard !pairing.running else { return }
+        guard SystemCompatibility.supportsOnDevicePairing, !pairing.running else { return }
         pairingError = nil
         Task {
             do {
@@ -88,6 +107,7 @@ struct AirliftEntryView: View {
         Task {
             defer { checking = false }
             do {
+                guard PairingController.hasValidPairingFile else { throw PairingRecord.ValidationError.invalid }
                 _ = try await TendiesEngine.shared.detectPosterBoardContainer(
                     pairingPath: PairingController.pairingFilePath()
                 )

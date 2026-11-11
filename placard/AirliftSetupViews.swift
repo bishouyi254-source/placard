@@ -40,6 +40,7 @@ struct AirliftPairingView: View {
     let pin: String?
     let error: String?
     let onStart: () -> Void
+    var onImport: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -49,7 +50,9 @@ struct AirliftPairingView: View {
                 .foregroundStyle(.tint)
             Text("Pair this iPhone")
                 .font(.largeTitle.bold())
-            Text("Start pairing, then open Settings › Privacy & Security › Developer Mode › Pair with Placard.")
+            Text(SystemCompatibility.supportsOnDevicePairing
+                 ? String(localized: "Start pairing, then open Settings › Privacy & Security › Developer Mode › Pair with Placard.")
+                 : String(localized: "On-device pairing requires iOS 27. Import a pairing file for this iPhone instead."))
                 .foregroundStyle(.secondary)
             if let pin {
                 Text(pin).font(.largeTitle.monospacedDigit())
@@ -58,18 +61,24 @@ struct AirliftPairingView: View {
                 Text(error).foregroundStyle(.red)
             }
             Spacer()
-            Button(action: onStart) {
-                if running {
-                    ProgressView("Waiting for pairing…")
-                        .frame(maxWidth: .infinity)
-                } else {
-                    Text("Start pairing")
-                        .frame(maxWidth: .infinity)
+            Text("Pairing files contain private keys. Import only your own record. Importing does not verify device trust or wallpaper compatibility.")
+                .font(.footnote).foregroundStyle(.secondary)
+            Button("Import pairing file…", action: onImport)
+                .buttonStyle(.bordered).disabled(running)
+            if SystemCompatibility.supportsOnDevicePairing {
+                Button(action: onStart) {
+                    if running {
+                        ProgressView("Waiting for pairing…")
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Text("Start pairing")
+                            .frame(maxWidth: .infinity)
+                    }
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(running)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(running)
         }
         .padding(24)
     }

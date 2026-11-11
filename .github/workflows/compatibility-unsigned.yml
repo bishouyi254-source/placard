@@ -1,0 +1,60 @@
+name: Compatibility unsigned IPA (no release)
+on:
+  push:
+    branches:
+      - fix/ios-26-7-3-compatibility
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: xcode-27
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '27.0'
+      - name: Pairing and compatibility checks
+        run: bash scripts/check-compatibility.sh
+      - name: Existing wallpaper import regression checks
+        run: python3 scripts/test-tendies-import.py
+      - name: Verify bundled Airlift
+        run: bash scripts/verify-airlift.sh
+      - name: Archive unsigned app
+        run: |
+          set -o pipefail
+          xcodebuild archive -project placard.xcodeproj -scheme placard \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/placard.xcarchive" \
+            -resultBundlePath "$RUNNER_TEMP/placard.xcresult" \
+            CODE_SIGN_IDENTITY='' CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee "$RUNNER_TEMP/xcodebuild.log"
+      - name: Verify archive and package
+        run: |
+          app="$RUNNER_TEMP/placard.xcarchive/Products/Applications/placard.app"
+          bash scripts/verify-airlift.sh "$app" '1.9.2'
+          minimum=$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$app/Info.plist")
+          test "$minimum" = '26.0'
+          mkdir -p "$RUNNER_TEMP/Payload"
+          cp -R "$app" "$RUNNER_TEMP/Payload/"
+          cd "$RUNNER_TEMP"
+          zip -qry placard-v1.9.2-compatibility-UNVERIFIED-unsigned.ipa Payload
+          shasum -a 256 placard-v1.9.2-compatibility-UNVERIFIED-unsigned.ipa > IPA-SHA256.txt
+          cat IPA-SHA256.txt >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: placard-compatibility-UNVERIFIED-unsigned
+          path: |
+            ${{ runner.temp }}/placard-v1.9.2-compatibility-UNVERIFIED-unsigned.ipa
+            ${{ runner.temp }}/IPA-SHA256.txt
+          if-no-files-found: error
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: placard-build-diagnostics
+          path: |
+            ${{ runner.temp }}/xcodebuild.log
+            ${{ runner.temp }}/placard.xcresult
+          if-no-files-found: ignore
